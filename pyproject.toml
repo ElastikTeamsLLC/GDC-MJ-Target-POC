@@ -1,0 +1,63 @@
+[project]
+name = "target-mssqltarget"
+version = "0.0.1"
+description = "Singer target for mssqltarget, built with the Meltano Singer SDK."
+readme = "README.md"
+authors = [{ name = "FirstName LastName", email = "firstname.lastname@example.com" }]
+keywords = [
+    "ELT",
+    "mssqltarget",
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+license = "Apache-2.0"
+license-files = [ "LICENSE" ]
+requires-python = ">=3.9"
+dependencies = [
+    "singer-sdk~=0.44.3",
+]
+
+[project.optional-dependencies]
+s3 = [
+    "fs-s3fs~=1.1.1",
+]
+
+[project.scripts]
+# CLI declaration
+target-mssqltarget = 'target_mssqltarget.target:Targetmssqltarget.cli'
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "singer-sdk[testing]~=0.44.3",
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+
+[tool.ruff.lint]
+ignore = [
+    "COM812",  # missing-trailing-comma
+]
+select = ["ALL"]
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[build-system]
+requires = [
+    "hatchling>=1,<2",
+]
+build-backend = "hatchling.build"
