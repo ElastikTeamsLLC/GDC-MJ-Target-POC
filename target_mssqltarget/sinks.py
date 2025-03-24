@@ -60,8 +60,6 @@ class mssqltargetSink(SQLSink):
             return "dbo" if stream_schema == "public" else stream_schema
 
         return None
-    
-    
 
     def preprocess_record(self, record: dict, context: dict) -> dict:
         """Process incoming record and return a modified result."""
@@ -70,57 +68,6 @@ class mssqltargetSink(SQLSink):
             if type(record[key]) in [list, dict]:
                 record[key] = json.dumps(record[key], default=str)
         return record
-
-    # def bulk_insert_records(
-    #     self,
-    #     full_table_name: str,
-    #     schema: dict,
-    #     records: Iterable[Dict[str, Any]],
-    #     connection: Optional[sqlalchemy.engine.Connection] = None,
-    # ) -> None:
-    #     """Bulk insert records into the specified table."""
-    #     if not full_table_name.startswith("#"):
-    #         full_table_name = f"#{full_table_name}"
-    #     insert_sql = f"INSERT INTO {full_table_name} (id, name, created_at, _sdc_source_file, _sdc_source_lineno) VALUES (:id, :name, :created_at, :_sdc_source_file, :_sdc_source_lineno)"
-    #     records_list = list(records)
-    #     self.logger.info(f"Inserting {len(records_list)} records into {full_table_name}")
-    #     if connection:
-    #         connection.execute(text(insert_sql), records_list)
-    #     else:
-    #         with self.connector._engine.connect() as conn:
-    #             conn.execute(text(insert_sql), records_list)
-    #             conn.commit()
-
-    def try_parse_date(self, date_str, record_id):
-        """Convert various date formats safely for SQL Server."""
-        if not isinstance(date_str, str) or not date_str.strip():
-            return None
-
-        formats = [
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%d",
-            "%m/%d/%Y %H:%M:%S",
-            "%m/%d/%Y",
-            "%H:%M:%S.%f",
-            "%H:%M:%S",
-        ]
-
-        for fmt in formats:
-            try:
-                dt = datetime.strptime(date_str.strip(), fmt)
-                if fmt.startswith("%H:%M"):
-                    dt = datetime.combine(datetime.today(), dt.time())
-
-                if dt.year < 1753 or dt.year > 9999:
-                    return None
-
-                return dt
-            except ValueError:
-                continue
-
-        return None
-
-
 
     def bulk_insert_records(
         self,
@@ -204,8 +151,6 @@ class mssqltargetSink(SQLSink):
                             default_value = 0  # Fallback
                         self.logger.warning(f"Record {i+1} has missing {schema_col} (column {conformed_col}); defaulting to {default_value}")
                         value = default_value
-                    if schema_col == 'ID':
-                        self.logger.debug(f"Record {i+1} ID value: {value}")
                     transformed_record[conformed_col] = value
             transformed_records.append(transformed_record)
         self.logger.info(f"Transformed {len(transformed_records)} records")
@@ -245,12 +190,10 @@ class mssqltargetSink(SQLSink):
                 if self.key_properties and 'id' in columns:
                     self.logger.info(f"Enabling IDENTITY_INSERT for {full_table_name}")
                     conn.execute(text(f"SET IDENTITY_INSERT {full_table_name} ON"))
-                    self.logger.debug(f"Connection state before execute: {conn.closed}")
                     conn.execute(text(insert_sql), transformed_records)
                     self.logger.info(f"Disabling IDENTITY_INSERT for {full_table_name}")
                     conn.execute(text(f"SET IDENTITY_INSERT {full_table_name} OFF"))
                 else:
-                    self.logger.debug(f"Connection state before execute: {conn.closed}")
                     conn.execute(text(insert_sql), transformed_records)
 
                 # Batch re-enable all FK constraints in one statement
@@ -273,88 +216,8 @@ class mssqltargetSink(SQLSink):
             self.logger.error(f"Unexpected error during bulk insert: {str(e)}")
             raise
 
-
-
-    # def process_batch(self, context: dict) -> None:
-    #     """Process a batch of records."""
-    #     conformed_records = (
-    #         [self.conform_record(record) for record in context["records"]]
-    #         if isinstance(context["records"], list)
-    #         else (self.conform_record(record) for record in context["records"])
-    #     )
-    #     join_keys = [self.conform_name(key, "column") for key in self.key_properties]
-    #     schema = self.conform_schema(self.schema)
-
-    #     if self.key_properties:
-    #         self.logger.info(f"Preparing permanent table {self.full_table_name}")
-    #         self.connector.prepare_table(
-    #             full_table_name=self.full_table_name,
-    #             schema=schema,
-    #             primary_keys=join_keys,
-    #             as_temp_table=False,
-    #         )
-    #         tmp_table_name = f"#{self.full_table_name.split('.')[-1]}"
-
-    #         with self.connector._engine.connect() as conn:
-    #             self.logger.info(f"Preparing temp table {tmp_table_name}")
-    #             self.connector.prepare_table(
-    #                 full_table_name=tmp_table_name,
-    #                 schema=schema,
-    #                 primary_keys=join_keys,
-    #                 as_temp_table=True,
-    #                 connection=conn,
-    #             )
-    #             self.logger.info(f"Created temp table {tmp_table_name}")
-
-    #             self.bulk_insert_records(
-    #                 full_table_name=tmp_table_name,
-    #                 schema=schema,
-    #                 records=conformed_records,
-    #                 connection=conn,
-    #             )
-
-    #             #Check temp table contents before merge
-    #             temp_count = conn.execute(text(f"SELECT COUNT(*) FROM {tmp_table_name}")).scalar()
-    #             self.logger.info(f"Records in {tmp_table_name} before merge: {temp_count}")
-
-    #             self.logger.info(f"Merging data from temp table to {self.full_table_name}")
-    #             self.merge_upsert_from_table(
-    #                 from_table_name=tmp_table_name,
-    #                 to_table_name=self.full_table_name,
-    #                 schema=schema,
-    #                 join_keys=join_keys,
-    #                 connection=conn,
-    #             )
-
-    #             # Check permanent table contents after merge
-    #             perm_count = conn.execute(text(f"SELECT COUNT(*) FROM {self.full_table_name}")).scalar()
-    #             self.logger.info(f"Records in {self.full_table_name} after merge: {perm_count}")
-
-    #             # Drop the temp table 
-    #             conn.execute(text(f"DROP TABLE {tmp_table_name}"))
-    #             self.logger.info(f"Dropped temp table {tmp_table_name}")
-
-    #             # Explicitly commit the transaction
-    #             conn.commit()
-
-
-    #         with self.connector._engine.connect() as conn:
-    #             final_count = conn.execute(text(f"SELECT COUNT(*) FROM {self.full_table_name}")).scalar()
-    #             self.logger.info(f"Records in {self.full_table_name} after commit: {final_count}")
-
-    #     else:
-    #         self.bulk_insert_records(
-    #             full_table_name=self.full_table_name,
-    #             schema=schema,
-    #             records=conformed_records,
-    #         )
-
-    #     # Log metrics 
-    #     record_count = len(list(conformed_records))
-    #     self.logger.info(f"Processed {record_count} records for stream {self.stream_name}")
-
     def process_batch(self, context: dict) -> None:
-        """Process a batch of records, forcing insert by handling all dependencies."""
+        """Process a batch of records, ensuring only insert if table exists and not overwriting existing data."""
         conformed_records = (
             [self.conform_record(record) for record in context["records"]]
             if isinstance(context["records"], list)
@@ -363,7 +226,6 @@ class mssqltargetSink(SQLSink):
         join_keys = [self.conform_name(key, "column") for key in self.key_properties]
         schema = dict(self.schema)
 
-        self.logger.info(f"Schema before processing: {schema}")
         self.logger.info(f"Preparing permanent table {self.full_table_name}")
         self.connector.prepare_table(
             full_table_name=self.full_table_name,
@@ -371,139 +233,10 @@ class mssqltargetSink(SQLSink):
             primary_keys=join_keys,
             as_temp_table=False,
         )
-
-        with self.connector._engine.connect() as conn:
-            table_name = self.full_table_name.split('.')[-1]
-            result = conn.execute(
-                text(f"SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{table_name}'")
-            ).fetchall()
-            table_schema = {row[0].lower(): row[1] for row in result}
-            self.logger.info(f"Table schema before alter: {table_schema}")
-
-            for field, props in schema["properties"].items():
-                field_type = props["type"] if isinstance(props["type"], str) else props["type"][0]
-                conformed_field = self.conform_name(field, "column")
-                if conformed_field in table_schema:
-                    current_type = table_schema[conformed_field]
-                    if field_type == "string" and current_type in ("int", "bigint", "smallint", "tinyint"):
-                        fk_query = text("""
-                            SELECT 
-                                fk.name AS constraint_name,
-                                OBJECT_NAME(fk.parent_object_id) AS table_name,
-                                OBJECT_NAME(fk.referenced_object_id) AS referenced_table,
-                                pc.name AS column_name,
-                                rc.name AS referenced_column
-                            FROM sys.foreign_keys fk
-                            JOIN sys.foreign_key_columns fkc 
-                                ON fk.object_id = fkc.constraint_object_id
-                            JOIN sys.columns pc 
-                                ON fkc.parent_object_id = pc.object_id AND fkc.parent_column_id = pc.column_id
-                            JOIN sys.columns rc 
-                                ON fkc.referenced_object_id = rc.object_id AND fkc.referenced_column_id = rc.column_id
-                            WHERE fk.parent_object_id = OBJECT_ID(:table_name)
-                            AND pc.name = :column_name
-                        """)
-                        table_name_str = str(self.full_table_name)
-                        fk_result = conn.execute(
-                            fk_query,
-                            {"table_name": table_name_str, "column_name": conformed_field}
-                        ).fetchall()
-
-                        for fk in fk_result:
-                            constraint_name = fk[0]
-                            self.logger.info(f"Dropping foreign key constraint {constraint_name} on {conformed_field}")
-                            conn.execute(
-                                text(f"ALTER TABLE {self.full_table_name} DROP CONSTRAINT {constraint_name}")
-                            )
-
-                        default_query = text("""
-                            SELECT dc.name
-                            FROM sys.default_constraints dc
-                            JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
-                            WHERE c.object_id = OBJECT_ID(:table_name) AND c.name = :column_name
-                        """)
-                        default_result = conn.execute(
-                            default_query,
-                            {"table_name": table_name_str, "column_name": conformed_field}
-                        ).fetchone()
-                        if default_result:
-                            constraint_name = default_result[0]
-                            self.logger.info(f"Dropping default constraint {constraint_name} on {conformed_field}")
-                            conn.execute(text(f"ALTER TABLE {self.full_table_name} DROP CONSTRAINT {constraint_name}"))
-
-                        computed_query = text("""
-                            SELECT name
-                            FROM sys.computed_columns
-                            WHERE object_id = OBJECT_ID(:table_name)
-                            AND definition LIKE '%' + :column_name + '%'
-                        """)
-                        computed_result = conn.execute(
-                            computed_query,
-                            {"table_name": table_name_str, "column_name": conformed_field}
-                        ).fetchall()
-                        for computed_col in computed_result:
-                            computed_col_name = computed_col[0]
-                            self.logger.info(f"Dropping computed column {computed_col_name} dependent on {conformed_field}")
-                            conn.execute(
-                                text(f"ALTER TABLE {self.full_table_name} DROP COLUMN {computed_col_name}")
-                            )
-                            if computed_col_name in [self.conform_name(c, "column") for c in schema["properties"]]:
-                                self.logger.warning(f"Column {computed_col_name} dropped but present in schema; it will be excluded from insert.")
-
-                        self.logger.info(f"Altering column {conformed_field} from {current_type} to NVARCHAR(255)")
-                        conn.execute(
-                            text(f"ALTER TABLE {self.full_table_name} ALTER COLUMN {conformed_field} NVARCHAR(255)")
-                        )
-
-                    elif field_type == "string" and current_type in ("datetime", "smalldatetime"):
-                        default_query = text("""
-                            SELECT dc.name
-                            FROM sys.default_constraints dc
-                            JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
-                            WHERE c.object_id = OBJECT_ID(:table_name) AND c.name = :column_name
-                        """)
-                        default_result = conn.execute(
-                            default_query,
-                            {"table_name": table_name_str, "column_name": conformed_field}
-                        ).fetchone()
-                        if default_result:
-                            constraint_name = default_result[0]
-                            self.logger.info(f"Dropping default constraint {constraint_name} on {conformed_field}")
-                            conn.execute(text(f"ALTER TABLE {self.full_table_name} DROP CONSTRAINT {constraint_name}"))
-
-                        computed_query = text("""
-                            SELECT name
-                            FROM sys.computed_columns
-                            WHERE object_id = OBJECT_ID(:table_name)
-                            AND definition LIKE '%' + :column_name + '%'
-                        """)
-                        computed_result = conn.execute(
-                            computed_query,
-                            {"table_name": table_name_str, "column_name": conformed_field}
-                        ).fetchall()
-                        for computed_col in computed_result:
-                            computed_col_name = computed_col[0]
-                            self.logger.info(f"Dropping computed column {computed_col_name} dependent on {conformed_field}")
-                            conn.execute(
-                                text(f"ALTER TABLE {self.full_table_name} DROP COLUMN {computed_col_name}")
-                            )
-                            if computed_col_name in [self.conform_name(c, "column") for c in schema["properties"]]:
-                                self.logger.warning(f"Column {computed_col_name} dropped but present in schema; it will be excluded from insert.")
-
-                        self.logger.info(f"Altering column {conformed_field} from {current_type} to NVARCHAR(255)")
-                        conn.execute(
-                            text(f"ALTER TABLE {self.full_table_name} ALTER COLUMN {conformed_field} NVARCHAR(255)")
-                        )
-
-            result = conn.execute(
-                text(f"SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{table_name}'")
-            ).fetchall()
-            table_schema_after = {row[0].lower(): row[1] for row in result}
-            self.logger.info(f"Table schema after alter: {table_schema_after}")
-
-            self.logger.info("Committing schema alterations...")
-            conn.commit()
-            self.logger.info("Schema alterations committed.")
+        # Abort processing if table does not exist.
+        if not self.connector.table_exists(self.full_table_name):
+            self.logger.warning(f"Table {self.full_table_name} does not exist. Aborting batch processing.")
+            return
 
         self.logger.info("Starting bulk insert...")
         try:
@@ -528,27 +261,27 @@ class mssqltargetSink(SQLSink):
         join_keys: List[str],
         connection: Optional[sqlalchemy.engine.Connection] = None,
     ) -> Optional[int]:
-        """Merge records from a temp table into the target table."""
-        join_condition = " AND ".join([f"temp.{key} = target.{key}" for key in join_keys])
-        update_stmt = ", ".join(
-            [f"target.{key} = temp.{key}" for key in schema["properties"].keys() if key not in join_keys]
-        )
-        merge_sql = f"""
-            MERGE INTO {to_table_name} AS target
-            USING {from_table_name} AS temp
-            ON {join_condition}
-            WHEN MATCHED THEN
-                UPDATE SET
-                    {update_stmt}
-            WHEN NOT MATCHED THEN
-                INSERT ({", ".join(schema["properties"].keys())})
-                VALUES ({", ".join([f"temp.{key}" for key in schema["properties"].keys()])});
+        """Insert new records from a temp table into the target table without overwriting existing data."""
+        # Generate join condition for the NOT EXISTS clause:
+        join_condition = " AND ".join([f"target.{key} = temp.{key}" for key in join_keys])
+        columns = list(schema["properties"].keys())
+        columns_joined = ", ".join(columns)
+        temp_columns = ", ".join([f"temp.{col}" for col in columns])
+        
+        insert_sql = f"""
+            INSERT INTO {to_table_name} ({columns_joined})
+            SELECT {temp_columns}
+            FROM {from_table_name} AS temp
+            WHERE NOT EXISTS (
+                SELECT 1 FROM {to_table_name} AS target
+                WHERE {join_condition}
+            );
         """
-        self.logger.info(f"Executing merge SQL: {merge_sql}")
+        self.logger.info(f"Executing non-overwriting insert SQL: {insert_sql}")
         if connection:
-            result = connection.execute(text(merge_sql))
+            result = connection.execute(text(insert_sql))
         else:
             with self.connector._engine.begin() as conn:
-                result = conn.execute(text(merge_sql))
-        self.logger.info(f"Merge affected {result.rowcount} rows")
+                result = conn.execute(text(insert_sql))
+        self.logger.info(f"Insert affected {result.rowcount} rows")
         return result.rowcount

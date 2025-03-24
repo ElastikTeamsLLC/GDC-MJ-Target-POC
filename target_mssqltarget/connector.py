@@ -12,7 +12,7 @@ logger = logging.getLogger()
 
 class mssqltargetConnector(SQLConnector):
     """The connector for MSSQL.
-
+    
     This class handles all DDL and type conversions.
     """
 
@@ -22,6 +22,17 @@ class mssqltargetConnector(SQLConnector):
     allow_merge_upsert: bool = True
     allow_temp_tables: bool = True
 
+    def table_exists(self, full_table_name: str, connection: Optional[sqlalchemy.engine.Connection] = None) -> bool:
+        """Check if a table exists in the database."""
+        _, schema_name, table_name = self.parse_full_table_name(full_table_name)
+        query = text("""
+            SELECT 1 FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_SCHEMA = :schema_name AND TABLE_NAME = :table_name
+        """)
+        conn = connection or self._engine.connect()
+        result = conn.execute(query, {"schema_name": schema_name, "table_name": table_name}).fetchone()
+        return result is not None
+
     def prepare_table(
         self,
         full_table_name: str,
@@ -30,14 +41,17 @@ class mssqltargetConnector(SQLConnector):
         as_temp_table: bool = False,
         connection: Optional[sqlalchemy.engine.Connection] = None,
     ) -> None:
-        """Prepare the table (create if needed, adapt columns if needed)."""
-        self.create_empty_table(
-            full_table_name=full_table_name,
-            schema=schema,
-            primary_keys=primary_keys,
-            as_temp_table=as_temp_table,
-            connection=connection,
-        )
+        """Prepare the table (only if it exists).
+
+        If the table does not exist, a warning is logged and the process aborts.
+        """
+        if not self.table_exists(full_table_name, connection):
+            logger.warning(f"Table {full_table_name} does not exist. Skipping data insertion.")
+            return  # Exit without creating a table
+
+        logger.info(f"Table {full_table_name} exists. Proceeding with data insertion.")
+        # Note: Since the requirement is to not overwrite existing data,
+        # we do not call create_empty_table here.
 
     def create_empty_table(
         self,
