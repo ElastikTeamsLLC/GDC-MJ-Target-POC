@@ -1,0 +1,39 @@
+version: 1
+send_anonymous_usage_stats: true
+project_id: target-mssqltarget
+default_environment: test
+environments:
+- name: test
+plugins:
+  extractors: []
+  loaders:
+  - name: target-mssqltarget
+    namespace: target_mssqltarget
+    pip_url: -e .
+    config:
+      sqlalchemy_url: 
+    capabilities:
+    - about
+    - stream-maps
+    - schema-flattening
+    - state
+    - catalog
+    - discover
+
+    settings:
+    - name: username
+      label: Username
+      description: The username to use for authentication
+    - name: password
+      kind: string
+      label: Password
+      description: The password to use for authentication
+      sensitive: true
+    - name: start_date
+      value: '2010-01-01T00:00:00Z'
+    - name: host
+    - name: port
+    - name: database
+    - name: default_target_schema
+
+    # TODO: Declare required settings here:
