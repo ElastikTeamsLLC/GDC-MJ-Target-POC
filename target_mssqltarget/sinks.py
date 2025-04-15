@@ -124,6 +124,12 @@ class mssqltargetSink(SQLSink):
         if not has_id_values and 'id' in columns:
             self.logger.info("No 'id' values provided in records; excluding 'id' from INSERT to use IDENTITY")
             columns.remove('id')
+        else:
+            # Optional debug log for checking duplicate IDs
+            id_values = [record.get('id') for record in records_list if record.get('id') is not None]
+            duplicates = set([x for x in id_values if id_values.count(x) > 1])
+            if duplicates:
+                self.logger.warning(f"Duplicate primary key values detected: {duplicates}")
 
         self.logger.info(f"Filtered columns for INSERT: {columns}")
         params = [f":{col}" for col in columns]
