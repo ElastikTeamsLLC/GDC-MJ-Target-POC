@@ -175,7 +175,7 @@ class mssqltargetSink(SQLSink):
         # Execute insert with optimized FK constraint handling
         self.logger.info("Executing bulk insert with forced constraints...")
         try:
-            with self.connector._engine.connect() as conn:
+            with self.connector._engine.begin() as conn:
                 # Check for blocking processes
                 lock_check = text("""
                     SELECT blocking_session_id, wait_time, wait_type
@@ -224,7 +224,7 @@ class mssqltargetSink(SQLSink):
                 else:
                     self.logger.info("No FK constraints to re-enable.")
 
-                conn.commit()
+                # conn.commit()
             self.logger.info(f"Successfully inserted {len(transformed_records)} records into {full_table_name} with constraints forced.")
         except sqlalchemy.exc.OperationalError as e:
             self.logger.error(f"Failed to insert records into {full_table_name}. Error: {e}")
