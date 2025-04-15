@@ -119,17 +119,28 @@ class mssqltargetSink(SQLSink):
         schema_columns = [self.conform_name(col, "column") for col in schema["properties"]]
         columns = [col for col in schema_columns if col in table_columns_info]
         
-        # Check if 'id' should be included based on data presence
-        has_id_values = any(record.get('ID') is not None for record in records_list)
-        if not has_id_values and 'id' in columns:
-            self.logger.info("No 'id' values provided in records; excluding 'id' from INSERT to use IDENTITY")
-            columns.remove('id')
-        else:
-            # Optional debug log for checking duplicate IDs
-            id_values = [record.get('id') for record in records_list if record.get('id') is not None]
-            duplicates = set([x for x in id_values if id_values.count(x) > 1])
-            if duplicates:
-                self.logger.warning(f"Duplicate primary key values detected: {duplicates}")
+        # --- Dynamically determine which PKs are safe to insert ---
+        pk_columns = [col.lower() for col in self.key_properties or []]
+        columns_to_remove = []
+
+        for pk_col in pk_columns:
+            # Check if this PK column is fully missing in all records
+            has_values = any(record.get(pk_col) is not None for record in records_list)
+            if not has_values and pk_col in columns:
+                self.logger.info(f"No values provided for primary key '{pk_col}'; excluding it from INSERT to use IDENTITY or DB default.")
+                columns_to_remove.append(pk_col)
+
+        # Remove columns without values from INSERT
+        for col in columns_to_remove:
+            columns.remove(col)
+
+        # Check for duplicates in provided PKs (if values are provided)
+        for pk_col in pk_columns:
+            if pk_col in columns:
+                pk_values = [record.get(pk_col) for record in records_list if record.get(pk_col) is not None]
+                duplicates = set([x for x in pk_values if pk_values.count(x) > 1])
+                if duplicates:
+                    self.logger.warning(f"Duplicate values found in primary key '{pk_col}': {duplicates}")
 
         self.logger.info(f"Filtered columns for INSERT: {columns}")
         params = [f":{col}" for col in columns]
