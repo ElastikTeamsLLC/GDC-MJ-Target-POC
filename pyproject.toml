@@ -11,7 +11,7 @@ readme = "README.md"
 python = ">=3.9,<3.14"
 singer-sdk = "^0.44.3"
 pymssql = ">=2.2.5"
-sqlalchemy = "^1.4"
+sqlalchemy = "^2.0"
 
 [tool.poetry.extras]
 s3 = ["fs-s3fs"]
