@@ -9,7 +9,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.14"
-singer-sdk = "^0.44.3"
+singer-sdk = "^0.47.4"
 pymssql = ">=2.2.5"
 sqlalchemy = "^1.4"
 
@@ -18,7 +18,7 @@ s3 = ["fs-s3fs"]
 
 [tool.poetry.dev-dependencies]
 pytest = ">=8"
-singer-sdk = { version = "~0.44.3", extras = ["testing"] }
+singer-sdk = { version = "~0.47.4", extras = ["testing"] }
 
 [tool.poetry.scripts]
 target-mssqltarget = "target_mssqltarget.target:Targetmssqltarget.cli"
